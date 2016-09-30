@@ -292,6 +292,7 @@ READER_SRC =\
 	$(SOURCEDIR)/Readers/ReaderLib/PackerBase.cpp \
 	$(SOURCEDIR)/Readers/ReaderLib/FramePacker.cpp \
 	$(SOURCEDIR)/Readers/ReaderLib/ReaderBase.cpp \
+	$(SOURCEDIR)/Readers/ReaderLib/Indexer.cpp \
     $(SOURCEDIR)/Readers/ReaderLib/ChunkCache.cpp \
 
 COMMON_SRC =\
@@ -818,7 +819,6 @@ $(CNTKBINARYREADER): $(CNTKBINARYREADER_OBJ) | $(CNTKMATH_LIB)
 
 CNTKTEXTFORMATREADER_SRC =\
 	$(SOURCEDIR)/Readers/CNTKTextFormatReader/Exports.cpp \
-	$(SOURCEDIR)/Readers/CNTKTextFormatReader/Indexer.cpp \
 	$(SOURCEDIR)/Readers/CNTKTextFormatReader/TextParser.cpp \
 	$(SOURCEDIR)/Readers/CNTKTextFormatReader/CNTKTextFormatReader.cpp \
 	$(SOURCEDIR)/Readers/CNTKTextFormatReader/TextConfigHelper.cpp \
@@ -882,6 +882,7 @@ endif
 IMAGEREADER_LIBS:= $(addprefix -l,$(IMAGEREADER_LIBS_LIST))
 
 IMAGEREADER_SRC =\
+  $(SOURCEDIR)/Readers/ImageReader/Base64ImageDeserializer.cpp \
   $(SOURCEDIR)/Readers/ImageReader/Exports.cpp \
   $(SOURCEDIR)/Readers/ImageReader/ImageConfigHelper.cpp \
   $(SOURCEDIR)/Readers/ImageReader/ImageDataDeserializer.cpp \
@@ -1074,7 +1075,6 @@ UNITTEST_READER_SRC = \
 	$(SOURCEDIR)/../Tests/UnitTests/ReaderTests/ImageReaderTests.cpp \
 	$(SOURCEDIR)/../Tests/UnitTests/ReaderTests/ReaderLibTests.cpp \
 	$(SOURCEDIR)/../Tests/UnitTests/ReaderTests/stdafx.cpp \
-	$(SOURCEDIR)/Readers/CNTKTextFormatReader/Indexer.cpp \
 	$(SOURCEDIR)/Readers/CNTKTextFormatReader/TextParser.cpp \
 
 UNITTEST_READER_OBJ := $(patsubst %.cpp, $(OBJDIR)/%.o, $(UNITTEST_READER_SRC))
