@@ -313,4 +313,14 @@ bool CompositeDataReader::ContainsDeserializer(const ConfigParameters& readerCon
     return false;
 }
 
+Minibatch CompositeDataReader::ReadMinibatch()
+{
+    auto m = ReaderBase::ReadMinibatch();
+    m.m_idToKeyMapping = [this](size_t sequence)
+    {
+        return m_corpus->GetStringRegistry()[sequence];
+    };
+    return m;
+}
+
 }}}
