@@ -38,6 +38,8 @@ Sequences FramePacker::GetNextSequences()
     while (localMinibatchSize > 0 && !result.m_endOfEpoch)
     {
         auto s = m_sequenceEnumerator->GetNextSequences(localMinibatchSize);
+        if (!s.m_endOfEpoch && s.m_data.empty()) // Iterate till we find some data for us.
+            continue;
         localMinibatchSize -= (int)s.m_data.begin()->size();
         result.m_endOfEpoch = s.m_endOfEpoch;
         for (size_t i = 0; i < s.m_data.size(); ++i)
