@@ -210,6 +210,7 @@ def _has_seq_dim(var, data):
     # Find the innermost data sample
     drill = [data]
     drill_data = data
+    found_number = False
     if isinstance(drill_data, np.ndarray) or sparse.issparse(drill_data):
         drill_shape = drill_data.shape
     else:
@@ -230,6 +231,7 @@ def _has_seq_dim(var, data):
 
                 if drill_shape == ():
                     drill_shape = (1,)
+                found_number = True
                 break
 
     if isinstance(drill_data, np.ndarray):
@@ -267,7 +269,9 @@ def _has_seq_dim(var, data):
                         (drill_shape, var.name, var_shape))
 
     num_var_dyn_axes = len(var.dynamic_axes)
-    if num_dyn_axes == num_var_dyn_axes:
+
+    if num_dyn_axes == num_var_dyn_axes or \
+            found_number and num_dyn_axes == num_var_dyn_axes + 1:
         return True
     elif num_dyn_axes == num_var_dyn_axes-1:
         return False
@@ -422,10 +426,12 @@ def _pad_dense_to_max_len(var, batch, max_seq_len):
     Z = np.zeros((len(batch), max_seq_len) +
                  (data_point.shape), dtype=data_point.dtype)
     for idx, seq in enumerate(batch):
-        elem_shape = seq[0].shape if hasattr(seq[0], 'shape') else ()
-        if elem_shape != data_point.shape:
+        elem = seq[0]
+        if not hasattr(seq[0], 'shape'):
+            elem = np.asarray(seq[0])
+        if elem.shape != data_point.shape:
             raise ValueError('shape mismatch: expected %s but got %s'
-                             % (str(data_point.shape), str(elem_shape)))
+                             % (str(data_point.shape), str(elem.shape)))
         Z[idx, :len(seq)] += seq
     return Z
 
