@@ -54,6 +54,8 @@ void PackerBase::SetConfiguration(const ReaderConfiguration& config, const std::
     {
         LogicError("Minibatch size cannot be zero.");
     }
+
+    m_config = config;
 }
 
 PackerBase::PackerBase(SequenceEnumeratorPtr sequenceEnumerator,

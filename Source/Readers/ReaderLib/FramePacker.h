@@ -20,9 +20,10 @@ public:
         SequencePacker(sequenceEnumerator, streams, numberOfBuffers)
     {}
 
-private:
-
+protected:
     MBLayoutPtr CreateMBLayout(const StreamBatch& batch) override;
+
+    Sequences GetNextSequences() override;
 };
 
 typedef std::shared_ptr<FramePacker> FramePackerPtr;

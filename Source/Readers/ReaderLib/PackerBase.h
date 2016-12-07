@@ -20,8 +20,6 @@ protected:
     struct StreamBuffer
     {
         size_t m_size; // buffer size in bytes.
-        // Memory provider.
-        // TODO: Should possibly switch to matrices here.
         MemoryProviderPtr m_memoryProvider;
         std::shared_ptr<char> m_data; // contiguous array of data.
 
@@ -29,6 +27,7 @@ protected:
             m_size(0), m_memoryProvider(m_memoryProvider), m_data(nullptr)
         {
         }
+
         void Resize(size_t newSize);
     };
 
@@ -55,6 +54,11 @@ protected:
     // specifies the offset of the first value from the given sample in the sequence data/ array 
     // (sampleOffset is equal to the sum of sample sizes of all preceding samples).
     void PackDenseSample(char* destination, SequenceDataPtr sequence, size_t sampleOffset, size_t sampleSize);
+
+    virtual Sequences GetNextSequences()
+    {
+        return m_sequenceEnumerator->GetNextSequences(m_minibatchSize);
+    }
 
     SequenceEnumeratorPtr m_sequenceEnumerator;
 
@@ -84,6 +88,9 @@ protected:
 
     // Memory providers. Each stream has its own memory provider.
     std::vector<MemoryProviderPtr> m_memoryProviders;
+
+    // Current config.
+    ReaderConfiguration m_config;
 
 public:
     // Sets current epoch configuration.
