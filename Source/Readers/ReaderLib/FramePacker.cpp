@@ -34,6 +34,7 @@ Sequences FramePacker::GetNextSequences()
     int localMinibatchSize = (int)m_minibatchSize / (int)m_config.m_numberOfWorkers + (shouldAddOneSample ? 1 : 0);
 
     Sequences result;
+    result.m_data.resize(m_inputStreamDescriptions.size());
     while (localMinibatchSize > 0 && !result.m_endOfEpoch)
     {
         auto s = m_sequenceEnumerator->GetNextSequences(localMinibatchSize);
