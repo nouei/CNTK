@@ -186,7 +186,7 @@ def one_hot(batch, num_classes, dtype=None, device=None):
         value = cntk_py.Value.create_one_hot_double(num_classes, batch, device, False)
     return value
 
-def _has_seq_dim(var, data):
+def _has_seq_dim(data):
     '''
     Checks whether the data has a sequence dimensions or not.
 
@@ -196,89 +196,29 @@ def _has_seq_dim(var, data):
     sequences, and will be implicitly added during forward or backward pass.
 
     Args:
-        var (:class:`~cntk.ops.variables.Variable`): variable node for which
-         the ``batch`` is meant
         data (list or NumPy array (dense, sparse)): batch input data
 
     Returns:
         whether ``data`` has a sequence axis
     '''
-    num_dyn_axes = 0
-    var_shape = var.shape
-    var_rank = len(var_shape)
+    is_np_obj = lambda e: isinstance(e, np.ndarray) or sparse.issparse(e)
 
-    # Find the innermost data sample
-    drill = [data]
-    drill_data = data
-    found_number = False
-    if isinstance(drill_data, np.ndarray) or sparse.issparse(drill_data):
-        drill_shape = drill_data.shape
-    else:
-        while isinstance(drill_data, list):
-            drill_data = drill_data[0]
-            num_dyn_axes += 1
-
-            if isinstance(drill_data, np.ndarray) or sparse.issparse(drill_data):
-                drill_shape = drill_data.shape
-                break
-
-            drill.append(drill_data)
-            if isinstance(drill_data, Number):
-                # Calculate the shape of the data point that would correspond to the input
-                # variable's shape.
-                drill_shape = _as_tuple(np.asarray(drill[-var_rank]).shape)
-                drill.pop()
-
-                if drill_shape == ():
-                    drill_shape = (1,)
-                found_number = True
-                break
-
-    if isinstance(drill_data, np.ndarray):
-        # In case a full sequence is put inside an numpy array, we have
-        # to account for the real sample shape.
-        additional_dyn_axes = len(drill_shape) - var_rank
-        num_dyn_axes += additional_dyn_axes
-        drill_shape = drill_shape[additional_dyn_axes:]
-        # We also should make sure that the array is C contiguous
-        if not drill_data.flags.c_contiguous:
-            raise ValueError('supplied array is not C contiguous; use '
-                'np.ascontiguousarray (slow) or rearrange your data/computation')
-    elif sparse.issparse(drill_data):
-        if len(drill_shape)==2 and drill_shape[0]==1 and var_rank==1:
-            # var_shape might be defined as e.g. (3,) or (1,3)
-            drill_shape = (drill_shape[1],)
-        elif len(drill_shape) > var_rank:
-            # the sparse data might actually encode the full sequence so we
-            sub_shape = drill_shape[-var_rank:]
-            if sub_shape != var_shape:
-                raise ValueError('data and variable shape do not match')
-            num_dyn_axes += len(drill_shape) - var_rank
-            drill_shape = var_shape
-
-    # In drill_shape we now have potential data_points per drill level. We go
-    # now backwards until the shape matches var_shape, at which point we have
-    # found the real shape.
-    while drill_shape!=var_shape and drill:
-        drill_shape = np.asarray(drill.pop()).shape
-        num_dyn_axes -= 1
-
-    if drill_shape != var_shape:
-        raise ValueError('could not match the data with shape %s to the '
-                'input variable (name="%s") with shape %s'%\
-                        (drill_shape, var.name, var_shape))
-
-    num_var_dyn_axes = len(var.dynamic_axes)
-
-    if num_dyn_axes == num_var_dyn_axes or \
-            found_number and num_dyn_axes == num_var_dyn_axes + 1:
-        return True
-    elif num_dyn_axes == num_var_dyn_axes-1:
+    if is_np_obj(data):
         return False
-    else:
-        raise ValueError(
-        'data having %i axes is not compatible with the '
-        'input variable having %i axes'%(num_dyn_axes,len(var_shape)))
+
+    first_is_np_obj = is_np_obj(data[0])
+
+    if first_is_np_obj:
+        # only the first dimension is allowed to change as this is the number
+        # of elements in the sequence
+        lens = [o.shape[0] for o in data]
+        shapes = set(o.shape[1:] for o in data)
+        if len(shapes) != 1:
+            raise ValueError('sequences require elements of the same shape, '
+                    'but we got these: %s'%str(shapes))
+        return True
+
+    return False
 
 
 def sanitize_shape(shape):
@@ -476,6 +416,12 @@ def _is_dense(batch):
 
     return True
 
+def is_c_contiguous(data):
+    while isinstance(data, list):
+        data = data[0]
+
+    return data.flags.c_contiguous
+
 @typemap
 def sanitize_batch(var, batch, seq_starts=None, dtype=None, device=None):
     '''
@@ -517,9 +463,17 @@ def sanitize_batch(var, batch, seq_starts=None, dtype=None, device=None):
     # it is not enough to check whether the variable's dynamic axes include the
     # sequence axis, because the sequence axis might be omitted in the data if
     # it is not needed (CNTK core would then take care of this).
-    batch_has_seq = _has_seq_dim(var, batch)
+    batch_has_seq = _has_seq_dim(batch)
+    if seq_starts and not batch_has_seq:
+        raise ValueError('you specified sequence begin markers, but your '
+                'batch does not seem to contain sequences. A sequence '
+                'needs to be passed as a single NumPy/SciPy array.')
 
     is_dense = _is_dense(batch)
+    
+    if is_dense and not is_c_contiguous(batch):
+        raise ValueError('supplied array is not C contiguous; use '
+                'np.ascontiguousarray (slow) or rearrange your data/computation')
 
     if batch_has_seq or seq_starts:
         if isinstance(batch[0], list):
@@ -589,11 +543,9 @@ def sanitize_batch(var, batch, seq_starts=None, dtype=None, device=None):
             sparse_tmp = batch[0]
         else:
             # 3. batch is given as a list of lists containing the sparse sequence
-            #    elements
-            batch_has_sparse_elements = batch_has_sparse_sequences or \
-                    sparse.issparse(batch[0][0])
-            if batch_has_sparse_elements:
-                sparse_tmp = batch[0][0]
+            #    elements, which is not allowed
+            raise ValueError('sparse sequences have to be passed as a '
+                    'single array')
 
     if not sparse.isspmatrix_csr(sparse_tmp):
         raise ValueError("only CSR is supported as of now. Please "

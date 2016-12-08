@@ -143,12 +143,7 @@ def test_eval_sparse_no_seq(batch_index_data, device_id):
         assert np.allclose(result, [expected])
 
 @pytest.mark.parametrize("batch", [
-    [[csr([0,1,2,0])]],
-    [
-        [csr([0, 2, 0, 7]), csr([10, 20, 0, 0])],
-        [csr([0, 0, 0, 3])]
-    ],
-    # same as before, but sequence being encoded as one matrix
+    [csr([0,1,2,0])],
     [
         csr([[0, 2, 0, 7], [10, 20, 0, 0]]),
         csr([0, 0, 0, 3])

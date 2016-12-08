@@ -115,48 +115,38 @@ def test_get_data_type():
     assert get_data_type(pa32, pl, n64) == np.float32
     assert get_data_type(pa64, pl, n64) == np.float64
 
-@pytest.mark.parametrize("shape, batch, expected", [
-    (1, [[1,2]], True),
-    (1, [1,2], False),
-
-    (2, AA([[1,1],[2,2]]), False),
-    (2, [[1,1],[2,2]], False),
-    (2, AA([[[1,1],[2,2]]]), True),
-    ((2,), AA([[1,1],[2,2]]), False),
-    ((2,), AA([[[1,1],[2,2]]]), True),
-
-    ((1,2), AA([[[1,1]],[[2,2]]]), False),
-    ((1,2), AA([[[[1,1]],[[2,2]]]]), True),
-    ((2,2), AA([[[1,1],[2,2]]]), False),
-    ((2,2), AA([[[[1,1],[2,2]]]]), True),
+@pytest.mark.parametrize("batch, expected", [
+    ([AA([1,2])], True),
+    ([[1,2]], False),
+    ([AA([[1,1],[2,2]]),AA([[3,3]])], True),
 
     # exception handling
-    ((2,2), AA([[1,1],[2,2]]), ValueError),
-    (1, [[[1,2]]], ValueError),
+    ([AA([[1,1]]),AA([[2]])], ValueError),
 ])
-def test_has_seq_dim_dense(shape, batch, expected):
-    i1 = input_variable(shape)
+def test_has_seq_dim_dense(batch, expected):
     if expected in [False, True]:
-        assert _has_seq_dim(i1, batch) == expected
+        assert _has_seq_dim(batch) == expected
     else:
         with pytest.raises(expected):
-            _has_seq_dim(i1, batch)
+            _has_seq_dim(batch)
 
-@pytest.mark.parametrize("shape, batch, expected", [
-    ((1,2), [csr([1,0]), csr([2,3]), csr([5,6])], False),
-    ((1,2), [[csr([1,0]), csr([2,3])], [csr([5,6])]], True),
+@pytest.mark.parametrize("batch, expected", [
+    ([csr([1,0]), csr([2,3]), csr([5,6])], True),
+    ([[csr([1,0]), csr([2,3])], [csr([5,6])]], False),
+
+    # exception handling
+    ([csr([1,0]), csr([2])], ValueError),
 ])
-def test_has_seq_dim_sparse(shape, batch, expected):
-    i1 = input_variable(shape, is_sparse=True)
+def test_has_seq_dim_sparse(batch, expected):
     if expected in [False, True]:
-        assert _has_seq_dim(i1, batch) == expected
+        assert _has_seq_dim(batch) == expected
     else:
         with pytest.raises(expected):
-            _has_seq_dim(i1, batch)
+            _has_seq_dim(batch)
 
 def test_sanitize_batch_sparse():
-    batch = [[csr([1,0,2]), csr([2,3,0])],
-             [csr([5,0,1])]]
+    batch = [csr([[1,0,2],[2,3,0]]),
+             csr([5,0,1])]
 
     var = input_variable(3, is_sparse=True)
     b = sanitize_batch(var, batch)
@@ -168,33 +158,36 @@ def test_sanitize_batch_sparse():
     # 2 sequences, with max seq len of 2 and dimension 3
     assert b.shape == (2,2,3)
 
-@pytest.mark.parametrize("batch, seq_starts, expected_mask", [
-    ([[5, 6, 7], [8]],
+@pytest.mark.parametrize("batch, seq_starts, expected", [
+    ([AA([5, 6, 7]), AA([8])],
        [True, False],
        [[2, 1, 1], [1, 0, 0]]),
 
-    ([[AA([5]), AA([6]), AA([7])], [AA([8])]],
-       [True, False],
-       [[2, 1, 1], [1, 0, 0]]),
-
-    ([[5], [8]],
+    ([AA([5]), AA([8])],
        [True, False],
        [[2], [1]]),
 
-
+    # exception handling
+    ([[5, 6, 7], [8]],
+       [True, False],
+       ValueError),
 ])
-def test_mask(batch, seq_starts, expected_mask):
+def test_mask(batch, seq_starts, expected):
     shape = (1,)
     var = input_variable(shape)
-    s = sanitize_batch(var, batch, seq_starts)
-    assert np.allclose(s.mask, expected_mask)
+    if type(expected) == type(ValueError):
+        with pytest.raises(expected):
+            s = sanitize_batch(var, batch, seq_starts)
+    else:
+        s = sanitize_batch(var, batch, seq_starts)
+        assert np.allclose(s.mask, expected)
 
 def test_sanitize_batch_contiguity():
     a1 = AA([[1,2],[3,4]])
     a2 = AA([[5,6],[7,8]])
     var = input_variable((2,2), is_sparse=True)
 
-    batch = [[a1.T],[a2.T]]
+    batch = [a1.T,a2.T]
     with pytest.raises(ValueError):
         b = sanitize_batch(var, batch)
 
