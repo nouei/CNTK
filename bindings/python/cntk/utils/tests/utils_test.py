@@ -13,7 +13,6 @@ from cntk.device import default
 from cntk.tests.test_utils import precision, PRECISION_TO_TYPE
 from cntk.ops import *
 from cntk.utils import *
-from cntk.utils import _has_seq_dim
 
 AA = np.asarray
 
@@ -69,35 +68,6 @@ def test_get_data_type():
     assert get_data_type(pa64, n64) == np.float64
     assert get_data_type(pa32, pl, n64) == np.float32
     assert get_data_type(pa64, pl, n64) == np.float64
-
-@pytest.mark.parametrize("batch, expected", [
-    ([AA([1,2])], True),
-    ([[1,2]], False),
-    ([AA([[1,1],[2,2]]),AA([[3,3]])], True),
-
-    # exception handling
-    ([AA([[1,1]]),AA([[2]])], ValueError),
-])
-def test_has_seq_dim_dense(batch, expected):
-    if expected in [False, True]:
-        assert _has_seq_dim(batch) == expected
-    else:
-        with pytest.raises(expected):
-            _has_seq_dim(batch)
-
-@pytest.mark.parametrize("batch, expected", [
-    ([csr([1,0]), csr([2,3]), csr([5,6])], True),
-    ([[csr([1,0]), csr([2,3])], [csr([5,6])]], False),
-
-    # exception handling
-    ([csr([1,0]), csr([2])], ValueError),
-])
-def test_has_seq_dim_sparse(batch, expected):
-    if expected in [False, True]:
-        assert _has_seq_dim(batch) == expected
-    else:
-        with pytest.raises(expected):
-            _has_seq_dim(batch)
 
 def test_sanitize_batch_sparse():
     batch = [csr([[1,0,2],[2,3,0]]),

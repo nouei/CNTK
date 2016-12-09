@@ -12,7 +12,7 @@ from numbers import Number
 from scipy import sparse
 
 from .. import cntk_py
-from cntk.device import use_default_device
+from cntk.device import use_default_device, cpu
 from .swig_helper import typemap
 from ..axis import Axis
 from .progress_print import *
@@ -77,40 +77,6 @@ def one_hot(batch, num_classes, dtype=None, device=None):
     elif dtype == np.float64:
         value = cntk_py.Value.create_one_hot_double(num_classes, batch, device, False)
     return value
-
-def _has_seq_dim(data):
-    '''
-    Checks whether the data has a sequence dimensions or not.
-
-    By default, :func:`~cntk.ops.input_variable` sets up the input variable to
-    have two dynamic axes, the batch and the sequence axis. When providing the
-    data, the sequence axis can be left out, if the batch doesn't make use of
-    sequences, and will be implicitly added during forward or backward pass.
-
-    Args:
-        data (list or NumPy array (dense, sparse)): batch input data
-
-    Returns:
-        whether ``data`` has a sequence axis
-    '''
-    is_np_obj = lambda e: isinstance(e, np.ndarray) or sparse.issparse(e)
-
-    if is_np_obj(data):
-        return False
-
-    first_is_np_obj = is_np_obj(data[0])
-
-    if first_is_np_obj:
-        # only the first dimension is allowed to change as this is the number
-        # of elements in the sequence
-        lens = [o.shape[0] for o in data]
-        shapes = set(o.shape[1:] for o in data)
-        if len(shapes) != 1:
-            raise ValueError('sequences require elements of the same shape, '
-                    'but we got these: %s'%str(shapes))
-        return True
-
-    return False
 
 
 def sanitize_shape(shape):
@@ -233,66 +199,6 @@ def get_data_type(*args):
             return np.float32
 
 
-def _pad_dense_to_max_len(var, batch, max_seq_len):
-    """Appends the minimal required amount of zeroes at the end of each sample
-    in the batch so that it becomes rectangular. ``batch`` is assumed to be
-    row-major: first index is batch item, second is sequence item, then comes
-    that actual sample. The sequence length is assumed to be the only varying
-    dimension.
-
-    Args:
-        batch (list of NumPy arrays): list of arrays that differ only in their
-         first dimension (different sequence lengths)
-        max_seq_len (int): length to which the batch elements will be padded to
-
-    Returns:
-        Padded NumPy array
-    """
-    # Assuming all sequences elements in all samples have the same shape
-    data_point = np.asarray(batch[0][0])
-
-    # FIXME
-    # This is not the most efficient way of dealing with variable length
-    # sequences, but so far the only one supported. Once, ragged arrays are
-    # natively supported in CNTK, this will change.
-    Z = np.zeros((len(batch), max_seq_len) +
-                 (data_point.shape), dtype=data_point.dtype)
-    for idx, seq in enumerate(batch):
-        elem = seq[0]
-        if not hasattr(seq[0], 'shape'):
-            elem = np.asarray(seq[0])
-        if elem.shape != data_point.shape:
-            raise ValueError('shape mismatch: expected %s but got %s'
-                             % (str(data_point.shape), str(elem.shape)))
-        Z[idx, :len(seq)] += seq
-    return Z
-
-def _pad_sparse_seq_to_max_len(batch, max_seq_len):
-    '''
-    Appends sparse matrices of the same shape to every sequence so that they
-    are of the same length.
-    '''
-    Z = []
-    data_point = sparse.csr_matrix(batch[0][0].shape)
-    for seq in batch:
-        seq_len = seq.shape[0] if hasattr(seq, 'shape') else len(seq)
-        if seq_len>max_seq_len:
-            raise ValueError('sequence of length %i exceeds max '
-                    'length of %i'%(seq_len, max_seq_len))
-        elif max_seq_len > seq_len:
-            if isinstance(batch[0], list):
-                seq += (max_seq_len-seq_len)*[data_point]
-            else:
-                shape = list(seq.shape)
-                shape[0] = max_seq_len-seq_len
-                seq = [seq, sparse.csr_matrix(tuple(shape))]
-
-        if isinstance(seq, list):
-            seq = sparse.vstack(seq, format='csr')
-
-        Z.append(seq)
-    return Z
-
 def _is_dense(batch):
     if isinstance(batch, np.ndarray):
         return True
@@ -315,19 +221,17 @@ def _is_c_contiguous(data):
     return data.flags.c_contiguous
 
 @typemap
-def sanitize_batch(var, batch, seq_starts=None, dtype=None, device=None):
+def sanitize_batch(var, batch, seq_starts=None, device=None):
     '''
-    Convert to :class:`Value` with ``dtype``. If the samples in
-    ``batch`` have different sequence lengths, pad them to max sequence length
-    and create a mask.
+    Convert to :class:`Value`.
 
     Args:
-        var (:class:`~cntk.ops.variables.Variable`): variable node for which
-         the ``batch`` is meant
-        batch: batch input for `var`. It can be a pure Python structure (list
-         of lists, ...), a combination of lists of NumPy arrays or SciPy
-         sparse CSR matrices. Alternatively, it can also be the output of
-         :func:`one_hot`.
+        var (:class:`~cntk.ops.variables.Variable`): input variable into which
+         ``batch`` is passed
+        batch: batch input for `var`. It can be 
+         * a single NumPy array denoting the full minibatch
+         * a list of NumPy arrays or SciPy sparse CSR matrices
+         * a :class:`Value` object (e.g. returned by :func:`one_hot`)
         seq_starts (list of `bool`s or None): if None, every sequence is
          treated as a new sequence. Otherwise, it is interpreted as a list of
          Booleans that tell whether a sequence is a new sequence (`True`) or a
@@ -340,149 +244,19 @@ def sanitize_batch(var, batch, seq_starts=None, dtype=None, device=None):
         :class:`Value`: converted batch that can be passed to the core API
     '''
     if isinstance(batch, cntk_py.Value):
+        if seq_starts is not None:
+            raise ValueError('for directly passed Value objects sequence '
+                    'starts cannot be used yet.')
         return batch
 
-    if isinstance(batch, list):
-        if len(batch) == 0:
-            raise ValueError('batch is empty')
-
-    if isinstance(batch, np.ndarray) and batch.dtype == object:
-        raise ValueError('dtype object is not supported. If this is a batch '
-                'of sequences, you need to pass them as a pure-Python list '
-                'of NumPy arrays')
-
-    # We need to figure out whether the data has a sequence axis. Note that
-    # it is not enough to check whether the variable's dynamic axes include the
-    # sequence axis, because the sequence axis might be omitted in the data if
-    # it is not needed (CNTK core would then take care of this).
-    batch_has_seq = _has_seq_dim(batch)
-    if seq_starts and not batch_has_seq:
+    if seq_starts and len(var.dynamic_axes):
         raise ValueError('you specified sequence begin markers, but your '
-                'batch does not seem to contain sequences. A sequence '
-                'needs to be passed as a single NumPy/SciPy array.')
-
-    is_dense = _is_dense(batch)
-    
-    if batch_has_seq or seq_starts:
-        if isinstance(batch[0], list):
-            seq_lens = [len(seq) for seq in batch]
-        else:
-            seq_lens = [seq.shape[0] for seq in batch]
-
-        max_seq_len = max(seq_lens)
-
-        # If the input is a list of lists of dense values, all of the same
-        # length, we convert it into a NumPy array.
-        if is_dense and len(set(seq_lens)) == 1:
-            batch_has_seq = False
-            batch = np.asarray(batch, dtype=var.dtype)
-
-    if dtype is None:
-        dtype = get_data_type(var)
+                'input_variable does contain sequences.')
 
     if device is None:
         device = use_default_device()
 
-    # batch is now either a dense input that requires a mask, or it is sparse
-    if batch_has_seq or seq_starts:
-        mask = cntk_py.NDMask((len(batch), max_seq_len),
-                device or use_default_device())
-        for idx, seq_len in enumerate(seq_lens):
-            if seq_starts is None or seq_starts[idx]:
-                mask.mark_sequence_begin((0, idx))
-            # The first parameter is provided as a vector of ints, and thus
-            # won't be automatically reversed to col-major, because of which we
-            # provide it as such.
-            # The second parameter is specifying the rectangle of the mask that
-            # is invalid. As C++ is taking an NDShape, and we reverse the shape
-            # in the SWIG layer, we provide it here as row-major.
-            mask.invalidate_section((seq_len, idx),
-                                    (1, cntk_py.InferredDimension))
-    else:
-        mask = None
-
-    if is_dense:
-        if batch_has_seq:
-            batch = _pad_dense_to_max_len(var, batch, max_seq_len)
-        if not isinstance(batch, np.ndarray):
-            batch = np.asarray(batch)
-
-        if is_dense and not _is_c_contiguous(batch):
-            raise ValueError('supplied array is not C contiguous; use '
-                    'np.ascontiguousarray (slow) or rearrange your data/computation')
-
-        ndav = _create_NDArrayView_from_NumPy(batch.astype(dtype), device)
-        return Value(data=ndav, mask=mask)
-
-    if isinstance(batch, np.ndarray):
-        if np.issubdtype(batch.dtype, int):
-            batch = batch.astype(var.dtype)
-        elif batch.dtype not in (np.float32, np.float64):
-            raise ValueError('only float32 and float64 are supported')
-
-        ndav = _create_NDArrayView_from_NumPy(batch.astype(dtype), device)
-        return Value(data=ndav, mask=mask)
-
-    # There are three possibilities of providing sparse batches:
-    # 1. batch is given as one big sparse array
-    batch_is_sparse = sparse.issparse(batch)
-    if batch_is_sparse:
-        sparse_tmp = batch
-    else:
-        # 2. batch is given as a list of sparse arrays, each of which is a full
-        #    sequence
-        batch_has_sparse_sequences = batch_is_sparse or sparse.issparse(batch[0])
-        if batch_has_sparse_sequences:
-            sparse_tmp = batch[0]
-        else:
-            # 3. batch is given as a list of lists containing the sparse sequence
-            #    elements, which is not allowed
-            raise ValueError('sparse sequences have to be passed as a '
-                    'single array')
-
-    if not sparse.isspmatrix_csr(sparse_tmp):
-        raise ValueError("only CSR is supported as of now. Please "
-                "convert your data using 'batch.tocsr()'")
-
-    if batch_is_sparse or batch_has_sparse_sequences or \
-            batch_has_sparse_elements:
-
-        batch_shape = batch.shape if hasattr(batch, 'shape') else (len(batch),)
-        sample_shape = var.shape
-
-        if not batch_is_sparse:
-            # batch is not one big sparse matrix, but a list of them (or a list
-            # of lists of them), so we have to create one. Two  possibilities:
-            # 1. Batch has sequence axis: only 1d sparse vectors are allowed.
-            # 2. Ohterwise, 1d or 2d sparse tensors are allowed
-            if batch_has_seq:
-                shape = batch[0][0].shape
-                if not (len(shape)==1 or len(shape)==2 and shape[0]==1):
-                    raise ValueError('only 1D sparse vectors are supported in '
-                            ' sequence data, you gave shape %s'%str(shape))
-                # Pad and stack the sparse vectors.
-                if batch_has_seq:
-                    batch = _pad_sparse_seq_to_max_len(batch, max_seq_len)
-                batch_shape += (max_seq_len,)
-                # We are actually 1D. If rank==2, then the first dim is 1.
-                sample_shape = sample_shape[-1]
-            else:
-                sample_shape = batch[0][0].shape
-                if len(sample_shape) not in [1,2]:
-                    raise ValueError('only 1D or 2D sparse vectors are supported')
-
-            # Vertically stack sequences/samples
-            batch = sparse.vstack(batch, format='csr')
-
-            batch_shape += _as_tuple(sample_shape)
-
-        ndav = cntk_py.NDArrayView(batch_shape, batch.data.astype(var.dtype),
-                batch.indptr, batch.indices, device, False)
-
-        return Value(data=ndav, mask=mask)
-
-    else:
-        raise ValueError('batch input not understood')
+    return Value.create(var, batch, seq_starts, device)
 
 
 def sanitize_value(shape, value, dtype, device):
@@ -656,7 +430,7 @@ def sanitize_var_map(op_arguments, arguments, precision=None,
         if isinstance(batch, MinibatchData):
             batch = batch.m_data
         elif not isinstance(batch, cntk_py.Value):
-            batch = sanitize_batch(var, batch, seq_starts, precision, device)
+            batch = sanitize_batch(var, batch, seq_starts, device)
 
         var_map[var] = batch
 
@@ -699,29 +473,113 @@ class Value(cntk_py.Value):
         value (None or value that can be cast to NumPy array): the value to
          be converted
         dtype: data type (np.float32 or np.float64)
-        data (list or NumPy array (dense, sparse)): batch input data
-        mask (list of list of bools): marks which elements are valid or not
-         (used to mask out elements in ragged arrays)
+        batch: batch input for `var`. It can be 
+         * a pure Python structure (list of lists, ...), 
+         * a list of NumPy arrays or SciPy sparse CSR matrices
+         * a :class:`Value` object (e.g. returned by :func:`one_hot`)
+        seq_starts (list of `bool`s or None): if None, every sequence is
+         treated as a new sequence. Otherwise, it is interpreted as a list of
+         Booleans that tell whether a sequence is a new sequence (`True`) or a
+         continuation of the sequence in the same slot of the previous
+         minibatch (`False`)
         device (:class:`~cntk.device.DeviceDescriptor`): device this value should be put
          on
     '''
-    def __init__(self, shape=None, dtype=None, data=None, mask=None, device=None):
+    def __init__(self, shape=None, dtype=None, batch=None, seq_starts=None, device=None):
         if device is None:
             device = use_default_device()
 
         if shape and dtype:
+            # FIXME is this needed?
             ndav = _create_NDArrayView(shape, dtype, device)
 
-        elif data:
-            if isinstance(data, np.ndarray):
-                ndav = _create_NDArrayView_from_NumPy(data, device)
+        elif batch:
+            if isinstance(batch, np.ndarray):
+                ndav = _create_NDArrayView_from_NumPy(batch, device)
             else:
-                ndav = data
+                ndav = batch
 
-        if mask:
-            super(Value, self).__init__(ndav, mask)
+        if seq_starts:
+            super(Value, self).__init__(ndav, seq_starts)
         else:
             super(Value, self).__init__(ndav)
+
+    @staticmethod
+    @typemap
+    def create(var, batch, seq_starts=None, device=None, read_only=False):
+        '''
+        Creates a :class:`Value` object.
+
+        Args:
+            var (:class:`~cntk.ops.variables.Variable`): input variable into which
+             ``batch`` is passed
+            batch: batch input. It can be 
+             * a single NumPy array denoting the full minibatch
+             * a list of NumPy arrays or SciPy sparse CSR matrices
+            seq_starts (list of `bool`s or None): if None, every sequence is
+             treated as a new sequence. Otherwise, it is interpreted as a list of
+             Booleans that tell whether a sequence is a new sequence (`True`) or a
+             continuation of the sequence in the same slot of the previous
+             minibatch (`False`)
+            device (:class:`~cntk.device.DeviceDescriptor`, default None): device
+             this value should be put on
+            read_only (bool, default False): whether the data is read only
+        
+        Returns:
+            :class:`Value` object.
+        '''
+        if isinstance(batch, np.ndarray):
+            # The outermost axis has to be Python list. If the user passes a
+            # full minibatch as one NumPy array, we have to convert it.
+            if batch.dtype == object:
+                raise ValueError('dtype object is not supported. If this is a batch '
+                        'of sequences, you need to pass them as a pure-Python list '
+                        'of NumPy arrays')
+            batch = list(batch)
+
+        if not isinstance(batch, list):
+            raise ValueError('batch has to be a list of NumPy arrays or '
+                    'SciPy CSR matrices')
+
+        list_of_ndavs = []
+
+        # NDArrayViews are all created on CPU. The Value object later then will
+        # move it to the requested device.
+        cpu_dev = cpu()
+        for sample in batch:
+            if not (isinstance(sample, np.ndarray) or sparse.issparse(sample)):
+                raise ValueError('sample type "%s" is not supported. Please '
+                        'provide the data as a Python list of NumPy arrays '
+                        'or Scipy CSR matrices.'%type(sample))
+
+            if np.issubdtype(sample.dtype, int): 
+                sample = sample.astype(var.dtype)
+            elif sample.dtype not in (np.float32, np.float64):
+                raise ValueError('only integer, float32 and float64 are supported, '
+                        'you gave %s'%sample.dtype)
+
+            if isinstance(sample, np.ndarray):
+                if not _is_c_contiguous(sample):
+                    raise ValueError('supplied data is not C contiguous; use '
+                            'np.ascontiguousarray (slow) or rearrange your data/computation')
+                ndav = _create_NDArrayView_from_NumPy(sample, cpu_dev)
+
+            elif sparse.issparse(sample):
+                if not sparse.isspmatrix_csr(sample):
+                    raise ValueError("only CSR is supported as of now. Please "
+                            "convert your data using 'tocsr()'")
+
+                ndav = cntk_py.NDArrayView(_as_tuple(var.shape), sample.data,
+                        sample.indptr, sample.indices, cpu_dev, False)
+
+            list_of_ndavs.append(ndav)
+
+        return cntk_py.Value_create(
+                _as_tuple(var.shape), list_of_ndavs, 
+                seq_starts or [], 
+                device or use_default_device(),
+                read_only)
+
 
     @property
     def shape(self):
@@ -881,18 +739,6 @@ def get_train_eval_criterion(trainer):
     '''
     # we copy the value so swig does not destroy it when we leave the scope
     return copy.copy(trainer.previous_minibatch_evaluation_average)
-
-
-def ensure_dev(ndav, dev):
-
-    if ndav.device() != dev:
-
-        ndav_on_target = _create_NDArrayView(
-            ndav.shape().dimensions(), data_type=ndav.get_data_type(), dev=dev)
-        ndav_on_target.copy_from(ndav)
-        ndav = ndav_on_target
-
-    return ndav
 
 
 def value_to_seq(value):
