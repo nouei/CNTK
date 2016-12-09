@@ -41,10 +41,6 @@ public:
     // Gets sequence description by key.
     bool GetSequenceDescriptionByKey(const KeyType&, SequenceDescription&) override;
 
-    // A helper class for generation of type specific labels (currently float/double only).
-    class LabelGenerator;
-    typedef std::shared_ptr<LabelGenerator> LabelGeneratorPtr;
-
 private:
     // Creates a set of sequence descriptions.
     void CreateSequenceDescriptions(CorpusDescriptorPtr corpus, std::string mapPath, size_t labelDimension, bool isMultiCrop);

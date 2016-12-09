@@ -98,7 +98,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             if (!Decode64BitImage(token, endToken, decodedImage))
             {
                 fprintf(stderr, "WARNING: Cannot decode sequence with id %s in the input file '%ls'\n", 
-                    m_parent.m_corpus->GetStringRegistry()[sequence.m_key.m_sequence].c_str(),
+                    m_parent.m_corpus->IdToKey(sequence.m_key.m_sequence).c_str(),
                     m_parent.m_fileName.c_str());
                 resultingImage->m_isValid = false;
             }
@@ -110,7 +110,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                 if (!cvImage.data)
                 {
                     fprintf(stderr, "WARNING: Cannot decode sequence with id %s in the input file '%ls'\n",
-                        m_parent.m_corpus->GetStringRegistry()[sequence.m_key.m_sequence].c_str(),
+                        m_parent.m_corpus->IdToKey(sequence.m_key.m_sequence).c_str(),
                         m_parent.m_fileName.c_str());
                     resultingImage->m_isValid = false;
                 }
@@ -291,7 +291,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             if (!m_dataFile || ferror(m_dataFile.get()) != 0)
                 m_dataFile.reset(fopenOrDie(m_fileName, L"rbS"), [](FILE* f) { if (f) fclose(f); });
 
-            m_indexer = make_unique<Indexer>(m_dataFile.get(), !m_hasSequenceKeys, !m_hasSequenceKeys);
+            m_indexer = make_unique<Indexer>(false, m_dataFile.get(), !m_hasSequenceKeys, !m_hasSequenceKeys);
             m_indexer->Build(corpus);
         });
 

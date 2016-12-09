@@ -318,7 +318,7 @@ Minibatch CompositeDataReader::ReadMinibatch()
     auto m = ReaderBase::ReadMinibatch();
     m.m_idToKeyMapping = [this](size_t sequence)
     {
-        return m_corpus->GetStringRegistry()[sequence];
+        return m_corpus->IdToKey(sequence);
     };
     return m;
 }

@@ -130,7 +130,7 @@ void Indexer::Build(CorpusDescriptorPtr corpus)
     size_t id = 0;
     int64_t offset = GetFileOffset();
     // read the very first sequence id
-    if (!TryGetSequenceId(id, corpus->GetStringRegistry()))
+    if (!TryGetSequenceId(id, corpus->KeyToId))
     {
         RuntimeError("Expected a sequence id at the offset %" PRIi64 ", none was found.", offset);
     }
@@ -145,7 +145,7 @@ void Indexer::Build(CorpusDescriptorPtr corpus)
         offset = GetFileOffset(); // a new line starts at this offset;
         sd.m_numberOfSamples++;
 
-        if (!m_done && TryGetSequenceId(id, corpus->GetStringRegistry()) && id != currentKey)
+        if (!m_done && TryGetSequenceId(id, corpus->KeyToId) && id != currentKey)
         {
             // found a new sequence, which starts at the [offset] bytes into the file
             sd.m_byteSize = offset - sd.m_fileOffsetBytes;
@@ -164,27 +164,11 @@ void Indexer::Build(CorpusDescriptorPtr corpus)
 
 void Indexer::AddSequenceIfIncluded(CorpusDescriptorPtr corpus, size_t sequenceId, SequenceDescriptor& sd)
 {
-    if (m_numericSequenceId)
+    if (corpus->IsIncluded(corpus->IdToKey(sequenceId)))
     {
-        auto& stringRegistry = corpus->GetStringRegistry();
-        auto key = std::to_string(sequenceKey);
-        if (corpus->IsIncluded(key))
-        {
-            sd.m_key.m_sequence = stringRegistry[key];
-            sd.m_key.m_sample = 0;
-            m_index.AddSequence(sd);
-        }
-    }
-    else
-    {
-        auto& stringRegistry = corpus->GetStringRegistry();
-        auto key = corpus->GetStringRegistry()[sequenceKey];
-        if (corpus->IsIncluded(key))
-        {
-            sd.m_key.m_sequence = stringRegistry[key];
-            sd.m_key.m_sample = 0;
-            m_index.AddSequence(sd);
-        }
+        sd.m_key.m_sequence = sequenceId;
+        sd.m_key.m_sample = 0;
+        m_index.AddSequence(sd);
     }
 }
 
@@ -206,7 +190,7 @@ void Indexer::SkipLine()
     }
 }
 
-bool Indexer::TryGetSequenceId(size_t& id, StringToIdMap& mapping)
+bool Indexer::TryGetSequenceId(size_t& id, std::function<size_t(const std::string&)> mapping)
 {
     bool found = false;
     id = 0;
@@ -230,10 +214,9 @@ bool Indexer::TryGetSequenceId(size_t& id, StringToIdMap& mapping)
             {
                 if (isspace(c))
                 {
-                    if (found && !mapping.TryGet(key, id))
-                    {
-                        id = mapping.AddValue(key);
-                    }
+                    if (found)
+                        id = mapping(key);
+
                     // Stop as soon as there's a non-digit character
                     return found;
                 }
