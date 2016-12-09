@@ -7,9 +7,11 @@
 import os
 import math
 import numpy as np
+from cntk.device import cpu, gpu, set_default_device
 from .. import Function
 from ..ops import times
-from ..utils import one_hot, cntk_device
+from ..ops.tests.ops_test_utils import cntk_device
+from ..utils import one_hot
 from ..trainer import *
 from ..learner import *
 from .. import cross_entropy_with_softmax, classification_error, parameter, \
@@ -69,9 +71,7 @@ def test_output_to_retain():
 def test_eval_sparse_dense(tmpdir, device_id):
     from cntk import Axis
     from cntk.io import MinibatchSource, CTFDeserializer, StreamDef, StreamDefs
-    from cntk.device import cpu, gpu, set_default_device
     from cntk.ops import input_variable, times
-    from scipy.sparse import csr_matrix
 
     input_vocab_dim = label_vocab_dim = 69
 

@@ -9,6 +9,8 @@ from ..tensor import ArrayMixin
 from ..utils import typemap, value_to_seq
 from cntk.device import use_default_device
 
+import numpy as np
+
 INFINITELY_REPEAT = cntk_py.MinibatchSource.infinitely_repeat
 FULL_DATA_SWEEP = cntk_py.MinibatchSource.full_data_sweep
 INFINITE_SAMPLES = cntk_py.MinibatchSource.infinite_samples
@@ -637,11 +639,11 @@ def sequence_to_cntk_text_format(seq_idx, alias_tensor_map):
         return ''
 
     lines = []
-    for seq_idx in range(0, max_seq_length):
+    for elem_idx in range(0, max_seq_length):
         line = []
 
         for alias, tensor in sorted(alias_tensor_map.items()):
-            if seq_idx >= len(tensor):
+            if elem_idx >= len(tensor):
                 # for this alias there no more sequence elements
                 continue
 
@@ -655,7 +657,7 @@ def sequence_to_cntk_text_format(seq_idx, alias_tensor_map):
                 raise ValueError(
                     'expected a tensor (dense) or list of dicts (sparse), but got "%s"' % type(tensor))
 
-            line.append('%s %s' % (alias, to_str(tensor[seq_idx])))
+            line.append('%s %s' % (alias, to_str(tensor[elem_idx])))
 
         lines.append('%i\t|' % seq_idx + ' |'.join(line))
 

@@ -12,7 +12,7 @@ from numbers import Number
 from scipy import sparse
 
 from .. import cntk_py
-from cntk.device import cpu, gpu, use_default_device
+from cntk.device import use_default_device
 from .swig_helper import typemap
 from ..axis import Axis
 from .progress_print import *
@@ -35,22 +35,6 @@ def sanitize_precision(precision):
         return np.float64
     else:
         raise ValueError('precision value: "%s" is not supported' % precision)
-
-
-def cntk_device(device_id):
-    '''
-    Converts the legacy device ID as it was used in CNTK 1 to a :class:`~cntk.device.DeviceDescriptor` instance.
-
-    Args:
-        device_id (int): device id, -1 for CPU, 0 or higher for GPU
-
-    Returns:
-        :class:`~cntk.device.DeviceDescriptor`
-    '''
-    if device_id == -1:
-        return cpu()
-    else:
-        return gpu(device_id)
 
 
 @typemap
@@ -324,7 +308,7 @@ def _is_dense(batch):
 
     return True
 
-def is_c_contiguous(data):
+def _is_c_contiguous(data):
     while isinstance(data, list):
         data = data[0]
 
@@ -379,10 +363,6 @@ def sanitize_batch(var, batch, seq_starts=None, dtype=None, device=None):
 
     is_dense = _is_dense(batch)
     
-    if is_dense and not is_c_contiguous(batch):
-        raise ValueError('supplied array is not C contiguous; use '
-                'np.ascontiguousarray (slow) or rearrange your data/computation')
-
     if batch_has_seq or seq_starts:
         if isinstance(batch[0], list):
             seq_lens = [len(seq) for seq in batch]
@@ -426,6 +406,11 @@ def sanitize_batch(var, batch, seq_starts=None, dtype=None, device=None):
             batch = _pad_dense_to_max_len(var, batch, max_seq_len)
         if not isinstance(batch, np.ndarray):
             batch = np.asarray(batch)
+
+        if is_dense and not _is_c_contiguous(batch):
+            raise ValueError('supplied array is not C contiguous; use '
+                    'np.ascontiguousarray (slow) or rearrange your data/computation')
+
         ndav = _create_NDArrayView_from_NumPy(batch.astype(dtype), device)
         return Value(data=ndav, mask=mask)
 
