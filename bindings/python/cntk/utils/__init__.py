@@ -53,98 +53,6 @@ def cntk_device(device_id):
         return gpu(device_id)
 
 
-def _dense_to_str(data):
-    return ' '.join(data.ravel(order='C').astype(np.str))
-
-
-def _sparse_to_str(data):
-    return ' '.join('%s:%s' % (k, v) for k, v in sorted(data.items()))
-
-
-def tensors_to_text_format(sample_idx, alias_tensor_map):
-    '''
-    Converts a list of NumPy arrays representing tensors of inputs into a
-    format that is readable by :class:`~cntk.io.CTFDeserializer`.
-
-    Args:
-        sample_idx (int): number of current sample
-        alias_tensor_map (dict): maps alias (str) to tensor (ndarray). Tensors
-          are assumed to have dynamic axis.
-
-    Returns:
-        String representation in `CNTKTextReader format <https://github.com/microsoft/cntk/wiki/CNTKTextFormat-Reader>`_
-    '''
-
-    max_seq_length = max(len(t) for t in alias_tensor_map.values())
-
-    if max_seq_length == 0:
-        return ''
-
-    lines = []
-    for seq_idx in range(0, max_seq_length):
-        line = []
-
-        for alias, tensor in sorted(alias_tensor_map.items()):
-            if seq_idx >= len(tensor):
-                # for this alias there no more sequence elements
-                continue
-
-            if _is_tensor(tensor):
-                if not isinstance(tensor, np.ndarray):
-                    tensor = np.asarray(tensor)
-                to_str = _dense_to_str
-            elif isinstance(tensor, list) and isinstance(tensor[0], dict):
-                to_str = _sparse_to_str
-            else:
-                raise ValueError(
-                    'expected a tensor (dense) or list of dicts (sparse), but got "%s"' % type(tensor))
-
-            line.append('%s %s' % (alias, to_str(tensor[seq_idx])))
-
-        lines.append('%i\t|' % sample_idx + ' |'.join(line))
-
-    return '\n'.join(lines)
-
-
-def _is_tensor(data):
-    '''
-    Checks whether the data is a tensor, i.e. whether it is a NumPy array or a
-    list of NumPy arrays.
-
-    Args:
-        data: data to check
-
-    Returns: True, if it is a tensor.
-    '''
-    if isinstance(data, np.ndarray):
-        return True
-
-    if not isinstance(data, list):
-        return False
-
-    while len(data) > 0:
-        # All but the innermost dimension's values have to be lists
-        try:
-            data[0][0]
-        except:
-            # We reached the innermost dimension
-            try:
-                data[0] + 0
-                return True
-            except:
-                # Innermost type is not a number
-                return False
-
-        if isinstance(data, np.ndarray):
-            return True
-
-        if not isinstance(data[0], list):
-            return False
-
-        data = data[0]
-
-    return True
-
 @typemap
 def one_hot(batch, num_classes, dtype=None, device=None):
     '''
@@ -164,7 +72,7 @@ def one_hot(batch, num_classes, dtype=None, device=None):
                [ 0.,  0.,  0.,  0.,  0.,  1.]], dtype=float32), array([[ 0.,  0.,  0.,  0.,  1.,  0.]], dtype=float32)]
 
     Args:
-        batch (list (of lists, if sequence) of index data): batch input data
+        batch (NumPy array or list (of lists, if sequence) of index data): batch input data
         num_classes (int): number of classes
         dtype (`np.float32`, `np.float64`, default None): data type
         device (:class:`~cntk.device.DeviceDescriptor`, default None): device
@@ -1034,7 +942,7 @@ def eval(op, arguments=None, precision=None, device=None, backward_pass=False, e
         arguments: maps variables to their input data. The
          interpretation depends on the input type:
           * `dict`: keys are input variable or names, and values are the input data.
-          * any other type: if node has an unique input, ``arguments`` is mapped to this input.
+          * any other type: if node has a unique input, ``arguments`` is mapped to this input.
            For nodes with more than one input, only `dict` is allowed.
          In both cases, every sample in the data will be interpreted
          as a new sequence. To mark samples as continuations of the
@@ -1044,7 +952,7 @@ def eval(op, arguments=None, precision=None, device=None, backward_pass=False, e
          one (`True`) or a continuation of the previous one (`False`).
          Data should be either NumPy arrays or a
          :class:`~cntk.io.MinibatchData` instance.
-        seq_starts (list of `bool`s or None): if None, every sequence is
+        seq_starts (list of bools or None): if None, every sequence is
          treated as a new sequence. Otherwise, it is interpreted as a list of
          Booleans that tell whether a sequence is a new sequence (`True`) or a
          continuation of the sequence in the same slot of the previous

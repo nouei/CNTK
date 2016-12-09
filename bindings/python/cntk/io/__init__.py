@@ -568,3 +568,97 @@ def StreamDef(field, shape=None, is_sparse=False, transforms=None):
 # StreamDefs for use in constructing deserializers
 # StreamDefs(query = StreamDef(...), labels = StreamDef(...), ...)
 StreamDefs = Record
+
+def _dense_to_str(data):
+    return ' '.join(data.ravel(order='C').astype(np.str))
+
+
+def _sparse_to_str(data):
+    return ' '.join('%s:%s' % (k, v) for k, v in sorted(data.items()))
+
+
+def _is_tensor(data):
+    '''
+    Checks whether the data is a tensor, i.e. whether it is a NumPy array or a
+    list of NumPy arrays.
+
+    Args:
+        data: data to check
+
+    Returns: True, if it is a tensor.
+    '''
+    if isinstance(data, np.ndarray):
+        return True
+
+    if not isinstance(data, list):
+        return False
+
+    while len(data) > 0:
+        # All but the innermost dimension's values have to be lists
+        try:
+            data[0][0]
+        except:
+            # We reached the innermost dimension
+            try:
+                data[0] + 0
+                return True
+            except:
+                # Innermost type is not a number
+                return False
+
+        if isinstance(data, np.ndarray):
+            return True
+
+        if not isinstance(data[0], list):
+            return False
+
+        data = data[0]
+
+    return True
+
+
+def sequence_to_cntk_text_format(seq_idx, alias_tensor_map):
+    '''
+    Converts a list of NumPy arrays representing tensors of inputs into a
+    format that is readable by :class:`~cntk.io.CTFDeserializer`.
+
+    Args:
+        seq_idx (int): number of current sequence
+        alias_tensor_map (dict): maps alias (str) to tensor (ndarray). Tensors
+          are assumed to have dynamic axis.
+
+    Returns:
+        String representation in `CNTKTextReader format <https://github.com/microsoft/cntk/wiki/CNTKTextFormat-Reader>`_
+    '''
+
+    max_seq_length = max(len(t) for t in alias_tensor_map.values())
+
+    if max_seq_length == 0:
+        return ''
+
+    lines = []
+    for seq_idx in range(0, max_seq_length):
+        line = []
+
+        for alias, tensor in sorted(alias_tensor_map.items()):
+            if seq_idx >= len(tensor):
+                # for this alias there no more sequence elements
+                continue
+
+            if _is_tensor(tensor):
+                if not isinstance(tensor, np.ndarray):
+                    tensor = np.asarray(tensor)
+                to_str = _dense_to_str
+            elif isinstance(tensor, list) and isinstance(tensor[0], dict):
+                to_str = _sparse_to_str
+            else:
+                raise ValueError(
+                    'expected a tensor (dense) or list of dicts (sparse), but got "%s"' % type(tensor))
+
+            line.append('%s %s' % (alias, to_str(tensor[seq_idx])))
+
+        lines.append('%i\t|' % seq_idx + ' |'.join(line))
+
+    return '\n'.join(lines)
+
+
