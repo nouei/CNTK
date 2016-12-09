@@ -291,7 +291,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             if (!m_dataFile || ferror(m_dataFile.get()) != 0)
                 m_dataFile.reset(fopenOrDie(m_fileName, L"rbS"), [](FILE* f) { if (f) fclose(f); });
 
-            m_indexer = make_unique<Indexer>(false, m_dataFile.get(), !m_hasSequenceKeys, !m_hasSequenceKeys);
+            m_indexer = make_unique<Indexer>(true, m_dataFile.get(), !m_hasSequenceKeys, !m_hasSequenceKeys);
             m_indexer->Build(corpus);
         });
 

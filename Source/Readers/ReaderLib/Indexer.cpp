@@ -73,7 +73,7 @@ void Indexer::BuildFromLines(CorpusDescriptorPtr corpus)
             sd.m_fileOffsetBytes = offset;
             offset = GetFileOffset() + 1;
             sd.m_byteSize = offset - sd.m_fileOffsetBytes;
-            AddSequenceIfIncluded(corpus, lines, sd);
+            AddSequenceIfIncluded(corpus, corpus->KeyToId(std::to_string(lines)), sd);
             ++m_pos;
             ++lines;
         }
@@ -91,7 +91,7 @@ void Indexer::BuildFromLines(CorpusDescriptorPtr corpus)
         sd.m_numberOfSamples = 1;
         sd.m_fileOffsetBytes = offset;
         sd.m_byteSize = m_fileOffsetEnd - sd.m_fileOffsetBytes;
-        AddSequenceIfIncluded(corpus, lines, sd);
+        AddSequenceIfIncluded(corpus, corpus->KeyToId(std::to_string(lines)), sd);
     }
 }
 
