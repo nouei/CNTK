@@ -465,6 +465,7 @@ class Function(cntk_py.Function):
         '''
         return super(Function, self).replace_placeholder(substitution)
 
+
     @typemap
     def find_all_with_name(self, name):
         '''
@@ -493,6 +494,7 @@ class Function(cntk_py.Function):
         '''
         from .. import graph
         return graph.find_all_with_name(self, name)
+
 
     # TODO have a better name for combine() in this case
     @typemap
