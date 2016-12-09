@@ -22,9 +22,11 @@ trainNetwork = {
         
         model = Sequential (
             Scale {featScale} :
-            DenseLayer  {768, init="gaussian", initValueScale=1.5} : Dropout: ReLU : 
-            DenseLayer  {512, init="gaussian", initValueScale=1.5} : Dropout: ReLU : 
-            DenseLayer  {256, init="gaussian", initValueScale=1.5} : Dropout: ReLU :  
+            DenseLayer  {512, init="gaussian", initValueScale=0.00390625} : ReLU : 
+            DenseLayer  {2048, init="gaussian", initValueScale=0.1} : ReLU : 
+            DenseLayer  {2048, init="gaussian", initValueScale=0.1} : ReLU : 
+            DenseLayer  {2048, init="gaussian", initValueScale=0.1} : ReLU : 
+            DenseLayer  {1000, init="gaussian", initValueScale=0.1} : ReLU :  
             LinearLayer {labelDim}
         )
 
@@ -48,14 +50,14 @@ trainNetwork = {
     }
 
     SGD = {
-        epochSize = 60000
-        minibatchSize = 64
+        epochSize = 600000
+        minibatchSize = 4096
         maxEpochs = 40
         learningRatesPerSample = 0.001*10:0.0005*10:0.0001
 		dropoutRate = 0.5
         momentumAsTimeConstant = 600*10:4096
         
-        numMBsToShowResult = 500
+        numMBsToShowResult = 20
     }
 
     reader = {

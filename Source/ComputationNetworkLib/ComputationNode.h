@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <atomic>
+#include <nvToolsExt.h>
 
 #define DEFAULT_HIDDEN_ACTIVATION 0.1
 
@@ -699,6 +700,9 @@ protected:
     void InferMBLayoutFromInputsForStandardCase(bool isFinalValidationPass);
     virtual void ValidateInferInputDimsFrom(const TensorShape&) = 0;    // (implemented by ComputationNode<ElemType>)
 
+    nvtxRangeId_t m_nvtxRangeIdForward = 0;
+    nvtxRangeId_t m_nvtxRangeIdBackward = 0;
+
 public:
 
     virtual void OnEpochStart() {}
@@ -709,6 +713,7 @@ public:
 
     virtual void /*IComputationNode::*/ BeginForwardProp() override // called before first iteration step of ForwardProp()
     {
+        m_nvtxRangeIdForward = nvtxRangeStart(m_nodeName.c_str());
 #ifdef TRACK_GAP_NANS
         fprintf(stderr, "BeginForwardProp: %ls %ls operation [%s]\n", NodeName().c_str(), OperationName().c_str(), std::string(GetTensorShape(DetermineElementwiseTensorRank())).c_str());
 #endif
@@ -718,9 +723,11 @@ public:
 #ifdef TRACK_GAP_NANS
         fprintf(stderr, "EndForwardProp: %ls %ls operation\n", NodeName().c_str(), OperationName().c_str());
 #endif
+        nvtxRangeEnd(m_nvtxRangeIdForward);
     }
     virtual void /*IComputationNode::*/ BeginBackprop() override // called before first iteration step of ComputeGradient()
     {
+        m_nvtxRangeIdBackward = nvtxRangeStart(m_nodeName.c_str());
 #ifdef TRACK_GAP_NANS
         fprintf(stderr, "BeginBackprop: %ls %ls operation\n", NodeName().c_str(), OperationName().c_str());
 #endif
@@ -730,6 +737,7 @@ public:
 #ifdef TRACK_GAP_NANS
         fprintf(stderr, "EndBackprop: %ls %ls operation\n", NodeName().c_str(), OperationName().c_str());
 #endif
+        nvtxRangeEnd(m_nvtxRangeIdBackward);
     }
 
     // check whether a node is out of date w.r.t. its children, for lazy evaluation

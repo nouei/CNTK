@@ -34,6 +34,7 @@
 
 #include <map>
 #include <set>
+#include <nvToolsExt.h>
 
 namespace Microsoft { namespace MSR { namespace CNTK {
 
@@ -1017,11 +1018,14 @@ size_t SGD<ElemType>::TrainOneEpoch(ComputationNetworkPtr net,
         if (m_perfTraceLevel > 0)
             fineGrainedPerfMeasurementTimer.Start();
 
+        nvtxRangePush(L"GetMinibatch");
         // get minibatch
         // TODO: is it guaranteed that the GPU is already completed at this point, is it safe to overwrite the buffers?
         size_t actualMBSize = 0;
         bool wasDataRead = DataReaderHelpers::GetMinibatchIntoNetwork<ElemType>(*trainSetDataReader, net, criterionNodes[0],
                                                                                 useDistributedMBReading, useParallelTrain, *inputMatrices, actualMBSize, m_mpi);
+
+        nvtxRangePop();
 
         if (maxNumSamplesExceeded) // Dropping data.
             wasDataRead = false;
@@ -1094,6 +1098,8 @@ size_t SGD<ElemType>::TrainOneEpoch(ComputationNetworkPtr net,
                     ComputationNetwork::BumpEvalTimeStamp(labelNodes);
                 }
 
+                nvtxRangePush(L"Forward eval");
+
                 // ===========================================================
                 // forward prop for evaluate eval nodes
                 // ===========================================================
@@ -1102,18 +1108,28 @@ size_t SGD<ElemType>::TrainOneEpoch(ComputationNetworkPtr net,
                 // may be changed and need to be recomputed when gradient and function value share the same matrix
                 net->ForwardProp(evaluationNodes); // the bulk of this evaluation is reused in ComputeGradient() below
 
+                nvtxRangePop();
+
                 // ===========================================================
                 // forward prop for training criterion
                 // ===========================================================
 
+                nvtxRangePush(L"Forward criterion");
+
                 net->ForwardProp(criterionNodes[0]);
+
+                nvtxRangePop();
 
                 // ===========================================================
                 // backprop
                 // ===========================================================
 
+                nvtxRangePush(L"Backprop");
+
                 if (learnRatePerSample > 0.01 * m_minLearnRate) // only compute gradient when learning rate is large enough
                     net->Backprop(criterionNodes[0]);
+
+                nvtxRangePop();
 
                 // house-keeping for sub-minibatching
                 if (actualNumSubminibatches > 1)

@@ -124,9 +124,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <CudaLibs>cudart.lib;cublas.lib;cusparse.lib;curand.lib</CudaLibs>
-    <CudaInclude>$(CudaPath)\include</CudaInclude>
-    <CudaLibPath>$(CudaPath)\lib\$(Platform)</CudaLibPath>
+    <CudaLibs>cudart.lib;cublas.lib;cusparse.lib;curand.lib;nvToolsExt64_1.lib</CudaLibs>
+    <CudaInclude>$(CudaPath)\include;"C:\Program Files\NVIDIA Corporation\NvToolsExt\include"</CudaInclude>
+    <CudaLibPath>$(CudaPath)\lib\$(Platform);"C:\Program Files\NVIDIA Corporation\NvToolsExt\lib\$(Platform)"</CudaLibPath>
   </PropertyGroup>
 
   <!-- TODO warn if ConfigurationType not (yet) defined -->

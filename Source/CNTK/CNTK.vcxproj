@@ -107,7 +107,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>CNTKLIbrary-2.0.lib;ActionsLib.lib; SGDLib.lib; ComputationNetworkLib.lib; Math.lib; Common.lib; kernel32.lib; user32.lib; shell32.lib; SequenceTrainingLib.lib; %(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>CNTKLIbrary-2.0.lib;ActionsLib.lib; SGDLib.lib; ComputationNetworkLib.lib; Math.lib; Common.lib; kernel32.lib; user32.lib; shell32.lib; SequenceTrainingLib.lib;$(CudaLibs);%(AdditionalDependencies)</AdditionalDependencies>
       <Profile>true</Profile>
       <DelayLoadDLLs>Math.dll; msmpi.dll; nvml.dll; $(CudaRuntimeDll)</DelayLoadDLLs>
       <StackReserveSize>100000000</StackReserveSize>
