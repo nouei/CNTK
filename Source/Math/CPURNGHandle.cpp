@@ -10,14 +10,16 @@
 
 namespace Microsoft { namespace MSR { namespace CNTK {
 
-CPURNGHandle::CPURNGHandle(int deviceId, unsigned long seed, unsigned long long offset)
+CPURNGHandle::CPURNGHandle(int deviceId, uint64_t seed, uint64_t offset)
     : RNGHandle(deviceId)
 {
-#ifdef _MSC_VER // TODO: check if available under GCC/Linux
-    m_generator.reset(new std::ranlux64_base_01());
-    m_generator->seed(seed);
+    m_generator.reset(new std::mt19937_64());
+#if defined(_MSC_VER) && (_MSC_VER <= 1800 /*VS2013*/)
+    // Up until VS 2015, mt19937_64 takes a 32 bit seed, 
+    // see https://connect.microsoft.com/VisualStudio/feedback/details/779231
+    m_generator->seed((unsigned long)seed);
 #else
-    m_generator.reset(new std::default_random_engine(seed));
+    m_generator->seed(seed);
 #endif
     m_generator->discard(offset);
 }
